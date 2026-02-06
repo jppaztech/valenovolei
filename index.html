@@ -413,41 +413,105 @@
      exportAsJpeg(fullHtml, 'escalacao_times.jpeg', {dark: true, width: '530px'});
   });
   
-  function getAgendaExportHtml() {
+// --- MÓDULO DE EXPORTAÇÃO DA AGENDA (ATUALIZADO) ---
+  function getAgendaExportHtml(format) {
+      // Ajustes de layout: 'compact' reduz margens, 'visible' aumenta fontes
+      const isPdf = format === 'pdf';
+      const containerWidth = isPdf ? '100%' : '540px'; // 540px é ótimo para telas 9:16 (mobile)
+      
       const style = `<style>
-        body{font-family: Inter, sans-serif; background: #0f1115; color: #eef2f6; padding: 10px;}
-        h1{color: #FFFFFF; font-size: 1.1rem; margin-bottom: 10px;}
-        .card{background:#171a21; border:1px solid #2a3242; border-radius:8px; padding:6px; margin-bottom:6px; page-break-inside: avoid;}
-        .card > b {display:block; font-size: .8rem; margin-bottom: 4px;}
-        .game{border-top: 1px solid #2a3242; padding-top: 5px; margin-top: 5px;}
-        .game-info{display: flex; justify-content: space-around; align-items: center; font-size: 8pt;}
-        .players-box{margin-top: 5px; border-top: 1px dashed #2a3242; padding-top: 5px; font-size: 6pt; color: #9aa4b2; display:grid; grid-template-columns: 1fr 1fr; gap: 8px;}
-        .team-name {font-weight: bold;}
-        .players-box ul { padding: 0; list-style-type: none; margin:0;}
-        .players-left{text-align:left;} .players-right{text-align:right;}
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: #0f1115; 
+            color: #eef2f6; 
+            margin: 0; padding: 10px;
+            width: ${containerWidth};
+        }
+        h1 { color: #fff; font-size: 1.4rem; margin: 0 0 10px 0; text-align: center; }
+        
+        /* Card da Rodada - Compacto */
+        .round-card {
+            background: #171a21; 
+            border: 1px solid #2a3242; 
+            border-radius: 8px; 
+            padding: 8px; 
+            margin-bottom: 8px; /* Espaço pequeno entre rodadas */
+            page-break-inside: avoid; /* Evita quebrar a rodada no meio no PDF */
+        }
+        .round-title {
+            display: block; 
+            font-size: 1rem; 
+            font-weight: 700; 
+            color: #eef2f6;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #2a3242;
+            padding-bottom: 4px;
+        }
+
+        /* Linha do Jogo - Mais visível e próxima */
+        .game-row {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 8px;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px dashed #2a3242;
+        }
+        .game-row:last-child { border-bottom: none; }
+        
+        /* Placar destacado */
+        .score-display {
+            font-family: monospace;
+            background: #0b0e14;
+            border: 1px solid #293042;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #fff;
+            white-space: nowrap;
+        }
+
+        /* Times e Jogadores */
+        .team-col { display: flex; flex-direction: column; gap: 2px; }
+        .team-left { text-align: left; }
+        .team-right { text-align: right; }
+        
+        .team-name { font-weight: 700; font-size: 1rem; }
+        
+        .players-list {
+            font-size: 0.75rem; /* Pequeno mas legível */
+            color: #9aa4b2;
+            line-height: 1.2;
+        }
+        .players-list span { display: inline-block; margin-right: 3px; }
       </style>`;
 
       let bodyHtml = ``;
       const byRound = {};
       state.schedule.forEach((g)=>{(byRound[g.round]??=[]).push(g);});
+      
       Object.keys(byRound).sort((a,b)=>a-b).forEach(r => {
-          bodyHtml += `<div class="card"><b>Rodada ${r}</b>`;
-          byRound[r].forEach(g => {
+          bodyHtml += `<div class="round-card"><span class="round-title">Rodada ${r}</span>`;
+          byRound[r].sort((x,y)=>(x.order||1)-(y.order||1)).forEach(g => {
               const teamA = state.teams[g.a];
               const teamB = state.teams[g.b];
-              const playersA = `<ul>${teamA.players.map(p => `<li>${p.name}</li>`).join('')}</ul>`;
-              const playersB = `<ul>${teamB.players.map(p => `<li>${p.name}</li>`).join('')}</ul>`;
+              // Lista de nomes simplificada para economizar espaço vertical
+              const namesA = teamA.players.map(p => p.name).join(', ');
+              const namesB = teamB.players.map(p => p.name).join(', ');
+
               bodyHtml += `
-                <div class="game">
-                  <div class="mini muted" style="text-align:center; margin-bottom:4px; font-size: 7pt;">Jogo ${g.order || 1}</div>
-                  <div class="game-info">
-                      <span class="team-name" style="color:${teamA.color};">${teamA.name}</span>
-                      <span>${g.scoreA ?? '-'} x ${g.scoreB ?? '-'}</span>
-                      <span class="team-name" style="color:${teamB.color};">${teamB.name}</span>
+                <div class="game-row">
+                  <div class="team-col team-left">
+                      <div class="team-name" style="color:${teamA.color}">${teamA.name}</div>
+                      <div class="players-list">${namesA}</div>
                   </div>
-                  <div class="players-box">
-                    <div class="players-left">${playersA}</div>
-                    <div class="players-right">${playersB}</div>
+                  <div class="score-display">
+                      ${g.scoreA ?? ''} x ${g.scoreB ?? ''}
+                  </div>
+                  <div class="team-col team-right">
+                      <div class="team-name" style="color:${teamB.color}">${teamB.name}</div>
+                      <div class="players-list">${namesB}</div>
                   </div>
                 </div>`;
           });
@@ -456,13 +520,25 @@
       return `<!DOCTYPE html><html><head><meta charset="utf-8">${style}</head><body><h1>Agenda de Jogos</h1>${bodyHtml}</body></html>`;
   }
 
+  // Exportação PDF (A4)
   el("exportAgendaPdfBtn").addEventListener("click", () => {
-    const fullHtml = getAgendaExportHtml();
-    html2pdf().set({ margin: 10, filename: 'agenda_de_jogos.pdf', jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(fullHtml).save();
+    const fullHtml = getAgendaExportHtml('pdf');
+    html2pdf().set({ 
+        margin: [10, 10, 10, 10], // Margens menores para aproveitar a folha
+        filename: 'agenda_completa.pdf', 
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true }, 
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'avoid-all'] }
+    }).from(fullHtml).save();
   });
+
+  // Exportação JPEG (Proporção Mobile/9:16 de largura)
   el("exportAgendaJpegBtn").addEventListener("click", () => {
-    const fullHtml = getAgendaExportHtml();
-    exportAsJpeg(fullHtml, 'agenda_de_jogos.jpeg', {dark: true, width: '800px'});
+    const fullHtml = getAgendaExportHtml('jpeg');
+    // Width '540px' garante que a imagem tenha largura de alta resolução para celular,
+    // mas o comprimento será o necessário para mostrar todos os jogos (scroll).
+    exportAsJpeg(fullHtml, 'agenda_stories.jpeg', { dark: true, width: '540px' });
   });
 
   function distribuirPorSomaEquilibrada() {
